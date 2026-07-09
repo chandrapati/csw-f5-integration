@@ -109,7 +109,7 @@ Curated from the [CSW-User-Education](https://github.com/chandrapati/CSW-User-Ed
 
 ---
 
-## Related Cisco Secure Workload Resources
+## CSW Integration Guides & Resources
 
 | Repository | Description | Best for |
 |------------|-------------|---------|
