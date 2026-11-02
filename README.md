@@ -89,6 +89,7 @@ Curated from the [CSW-User-Education](https://github.com/chandrapati/CSW-User-Ed
 | File | Description |
 |---|---|
 | [`README.md`](README.md) | This file — quick start and overview |
+| [`SKILL.md`](SKILL.md) | How the integration actually works — IPFIX collection, NAT stitching, orchestrator snapshot and enforcement, version coverage 3.7–4.0 |
 | [`CSW-F5-Integration-Guide.md`](CSW-F5-Integration-Guide.md) | Full step-by-step guide (Markdown source) |
 | [`CSW-F5-Integration-Guide.html`](CSW-F5-Integration-Guide.html) | Styled HTML — open in browser (embedded YouTube player) |
 | [`csw-f5-architecture.png`](csw-f5-architecture.png) | Architecture diagram |
