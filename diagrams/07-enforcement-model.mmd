@@ -1,0 +1,11 @@
+flowchart TD
+    P["A CSW policy<br/>consumer to provider, on a port and protocol"]
+    Q{"Is the <b>provider</b> a<br/>labelled F5 virtual server?"}
+    P --> Q
+    Q -- "No" --> N1["Nothing is sent to the BIG-IP.<br/>The policy is enforced elsewhere,<br/>for example on host agents"]
+    Q -- "Yes" --> S1{"Enable Enforcement<br/>on the orchestrator?"}
+    S1 -- "Off" --> N2["Permission withheld.<br/>Nothing is deployed"]
+    S1 -- "On" --> S2{"Has the workspace<br/>been enforced?"}
+    S2 -- "No" --> N3["Permitted, but not yet acted on"]
+    S2 -- "Yes" --> R["CSW writes security rules<br/>to that virtual server<br/>over the REST API"]
+    R --> O["CSW now owns those rules.<br/>Manual edits are reverted as drift"]

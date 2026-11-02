@@ -141,6 +141,20 @@ Curated from the [CSW-User-Education](https://github.com/chandrapati/CSW-User-Ed
 
 > **Important:** Only **single-address** VIPs are imported (not subnet VIPs). Enabling policy enforcement makes **CSW the owner** of the virtual server's security rules; disabling it **removes** those rules from the BIG-IP.
 
+### Enforcement in one picture
+
+Three gates stand between a CSW policy and a rule on the BIG-IP. A policy failing any of them produces nothing.
+
+![How a CSW policy becomes a rule on the BIG-IP](diagrams/07-enforcement-model.svg)
+
+1. **The policy must name the F5 virtual server as the *provider*.** CSW policies are directional — consumer reaches provider. A policy where the F5 service is the consumer deploys nothing.
+2. **Enable Enforcement on the orchestrator is a permission, not an action.** It deploys nothing by itself and needs write credentials.
+3. **The workspace must be enforced.** That is what actually writes the rules.
+
+Once on, **CSW is the source of truth and the F5 UI is effectively read-only for those rules** — manual edits are reverted as drift. Tell the F5 team before switching it on.
+
+> **Verify in a lab first:** whether CSW writes a **catch-all deny** decides if enabling enforcement is purely additive or can block traffic you never wrote a policy for. [§7.3](CSW-F5-Integration-Guide.md#73-prove-this-in-a-lab-before-production) lists what to establish.
+
 ---
 
 ## Step-by-Step Guides

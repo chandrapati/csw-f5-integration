@@ -282,10 +282,41 @@ Each virtual server appears as a **service inventory** item characterized by its
 
 > Only do this once you understand the impact: **CSW becomes the owner** of the virtual server's security rules.
 
-**How it works:**
-- CSW translates logical policies whose **provider** matches a labeled F5 virtual server into **F5 security policy rules** and deploys them via the REST API.
-- Any existing security-policy assignment on that virtual server is **replaced** by a CSW-managed assignment. (Existing policies aren't deleted from the F5 policy list, but the *assignment* to the VIP is swapped.)
-- CSW **detects drift** — manual rule changes on the VIP are reverted. **Manage those rules in CSW only.**
+### 7.1 How enforcement actually works
+
+**Three things must line up before a single rule reaches the BIG-IP.** Most confusion about this feature comes from only knowing about one or two of them.
+
+![How a CSW policy becomes a rule on the BIG-IP](diagrams/07-enforcement-model.svg)
+
+*Three gates. A policy that fails any of them produces nothing on the BIG-IP.*
+
+#### Gate 1 — the policy must name the F5 service as the *provider*
+
+CSW policies are **directional**. Every policy says: a **consumer** may reach a **provider**, on a given port and protocol. The provider is the side offering the service.
+
+**Only policies where the provider is a labelled F5 virtual server are rendered to the F5.** This follows from what a load balancer is — the VIP is a service that clients consume, so protecting it means controlling who may reach it. A policy in which the F5 service is the *consumer* produces nothing on the BIG-IP.
+
+That is also why §4–§6 come first. Until the orchestrator has imported the virtual server and given it a `service_name`, there is nothing to name as a provider.
+
+#### Gate 2 — the orchestrator must permit it
+
+**Enable Enforcement** on the orchestrator is a **permission, not an action.** Switching it on deploys nothing. It tells CSW that this BIG-IP is allowed to receive rules, and it requires **write** credentials.
+
+#### Gate 3 — the workspace must be enforced
+
+Rules are only written when you **Enforce** the workspace holding the policy. This is the normal CSW policy lifecycle, unchanged by the F5 being involved — you can discover and analyse policy for an F5-provider service first, and see the effect before anything is deployed.
+
+**Two switches, both required.** The orchestrator toggle is set once by whoever owns the integration. The workspace enforcement is driven by whoever owns the application. Neither alone changes the BIG-IP.
+
+### 7.2 What CSW owns once it is on
+
+| CSW does | CSW does not |
+|---|---|
+| Write security rules to the virtual servers named as providers | Touch virtual servers that are not referenced by an enforced policy |
+| Replace the VIP's **security-policy assignment** with a CSW-managed one | Delete your existing policies from the BIG-IP's policy list — only the *assignment* to that VIP is swapped |
+| Revert manual rule changes on a managed VIP as **drift** | Manage anything other than those security rules — pools, profiles, iRules and the rest are untouched |
+
+**The practical consequence:** for any VIP under enforcement, **CSW is the source of truth and the F5 UI is read-only.** Someone editing rules there will see their change disappear. Tell the F5 team before switching this on, not afterwards.
 
 ![The enforcement lifecycle](diagrams/04-enforcement.svg)
 
@@ -307,7 +338,24 @@ Each virtual server appears as a **service inventory** item characterized by its
 
 > **Stopping enforcement:** Disabling enforcement on the orchestrator (or deleting it) **immediately removes all CSW rules** from the BIG-IP, leaving the virtual server's security policy **empty**. Plan for this.
 
-### 7.1 (Advanced) F5 Ingress Controller (Kubernetes)
+### 7.3 Prove this in a lab before production
+
+**This guide does not state whether CSW writes a catch-all deny at the end of the rule list it generates.** That single question decides whether enabling enforcement on a VIP is purely additive or can start blocking traffic you never wrote a policy for. **Determine it on a non-production virtual server first** — do not infer it.
+
+While you are there, establish the rest of the blast radius for your release:
+
+| Confirm | Why you need to know |
+|---|---|
+| **Is there a default deny?** Does traffic with no matching policy still pass? | Decides whether this is additive or blocking |
+| What the generated rules **actually look like** on the BIG-IP | So the F5 team can recognise and audit them |
+| Whether **both directions** are rendered, or only inbound to the VIP | Affects what the policy really covers |
+| What happens to **in-flight connections** at the moment rules are deployed | Decides whether this needs a change window |
+| How enforcement interacts with **agent enforcement on the pool members**, if those hosts also run CSW agents | Traffic may be evaluated twice, in two places, against two renderings of the same intent |
+| How long **removal** takes, and what the VIP looks like immediately afterwards | This is your rollback, so time it |
+
+**Then roll out one virtual server at a time.** The orchestrator toggle is estate-wide, but which VIPs actually receive rules is controlled by which workspaces you enforce — that is the lever to move slowly with.
+
+### 7.4 (Advanced) F5 Ingress Controller (Kubernetes)
 When pods are exposed externally via a Kubernetes **ingress** object, CSW can enforce at **both** the F5 and the backend pods:
 1. Create the **F5 BIG-IP** orchestrator (§4) **and** a **Kubernetes/OpenShift** orchestrator.
 2. Create the ingress object and deploy the **F5 ingress controller** pod.
