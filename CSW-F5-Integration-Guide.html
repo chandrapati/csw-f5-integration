@@ -2,14 +2,18 @@
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
   <meta charset="utf-8" />
-  <meta name="generator" content="pandoc" />
+  <meta name="generator" content="pandoc 3.11" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
   <title>Cisco Secure Workload — F5 BIG-IP Integration Guide</title>
   <style>
 
 span.smallcaps{font-variant: small-caps;}
-div.columns{display: flex; gap: min(4vw, 1.5em);}
-div.column{flex: auto; overflow-x: auto;}
+div.columns{display: flex; gap: 1.5em;}
+div.column{flex: auto;}
+@media screen {
+div.columns{gap: min(4vw, 1.5em);}
+div.column{overflow-x: auto;}
+}
 div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
 
 ul.task-list[class]{list-style: none;}
@@ -19,7 +23,6 @@ width: 0.8em;
 margin: 0 0.8em 0.2em -1.6em;
 vertical-align: middle;
 }
-.display.math{display: block; text-align: center; margin: 0.5rem auto;}
 
 html { -webkit-text-size-adjust: 100%; }
 pre > code.sourceCode { white-space: pre; position: relative; }
@@ -135,9 +138,10 @@ imports F5 <strong>virtual servers</strong> as <em>service
 inventory</em> (labels), and can <strong>push enforcement
 policy</strong> back to the BIG-IP as security rules.</li>
 <li><strong>Flow telemetry (IPFIX)</strong> — the BIG-IP streams
-<strong>IPFIX/NetFlow</strong> to a CSW <strong>ingest
-appliance</strong> so CSW can <em>see</em> load-balanced and SNAT’d
-traffic.</li>
+<strong>IPFIX</strong> to the <strong>F5 connector</strong> on a CSW
+<strong>ingest appliance</strong>, which <strong>stitches the NATed
+flows</strong> so CSW can <em>see</em> the real client behind
+load-balanced and SNAT’d traffic.</li>
 </ol>
 <blockquote>
 <p><strong>⚠ Disclaimer:</strong> This is a <strong>community reference
@@ -187,9 +191,9 @@ as a labeled <strong>service inventory</strong> item
 <tr>
 <td>SNAT hides the real client IP, so backend flows all look like they
 come from the F5</td>
-<td><strong>IPFIX telemetry</strong> from the BIG-IP lets CSW
-<strong>stitch</strong> the client → VIP → pool-member path for accurate
-visibility</td>
+<td>The <strong>F5 connector</strong> ingests IPFIX from the BIG-IP and
+<strong>stitches</strong> the client-side and server-side halves into
+one client → VIP → pool-member flow</td>
 </tr>
 <tr>
 <td>You want the load balancer to enforce your segmentation policy</td>
@@ -213,11 +217,13 @@ the <strong>External Orchestrator</strong> (§4–§7).</li>
 <figcaption aria-hidden="true">CSW and F5 BIG-IP Integration
 Architecture</figcaption>
 </figure>
-<p><em>Two independent data paths. <strong>Top:</strong> the External
+<p><em>Two independent data paths, travelling in opposite directions.
+<strong>Top:</strong> CSW <strong>pulls</strong> — the External
 Orchestrator uses the F5 REST API (HTTPS) to import virtual servers as
 service-inventory labels and to push enforcement rules back to the
-BIG-IP. <strong>Bottom:</strong> the BIG-IP exports IPFIX/NetFlow to a
-CSW ingest appliance for load-balanced flow visibility.</em></p>
+BIG-IP. <strong>Bottom:</strong> the BIG-IP <strong>pushes</strong> — it
+exports IPFIX to the F5 connector on a CSW ingest appliance, which
+stitches the NATed flows.</em></p>
 <table>
 <colgroup>
 <col style="width: 25%" />
@@ -243,8 +249,9 @@ CSW ingest appliance for load-balanced flow visibility.</em></p>
 <tr>
 <td><strong>Flow telemetry</strong></td>
 <td>F5 → CSW ingest appliance</td>
-<td>IPFIX / NetFlow (UDP)</td>
-<td>See client → VIP → pool-member flows through the LB</td>
+<td>IPFIX (UDP)</td>
+<td><strong>F5 connector</strong> stitches the NATed halves into one
+client → VIP → pool-member flow</td>
 </tr>
 </tbody>
 </table>
@@ -326,9 +333,11 @@ ability to define an IPFIX log destination/publisher.</li>
 <ul>
 <li>CSW <strong>4.x</strong> (on-prem or SaaS). Orchestrators live under
 <strong>Manage → External Orchestrators</strong>.</li>
-<li>For IPFIX: a deployed <strong>Ingest (NetFlow/IPFIX) virtual
-appliance</strong> with a <strong>NetFlow/IPFIX connector</strong> (8
-vCPU / 8 GB / 250 GB per the Compatibility Matrix).</li>
+<li>For IPFIX: a deployed <strong>Ingest virtual appliance</strong> with
+an <strong>F5 connector</strong> (8 vCPU / 8 GB / 250 GB per the
+Compatibility Matrix). <strong>Use the F5 connector, not the generic
+NetFlow/IPFIX connector</strong> — only the F5 connector does NAT
+stitching (§8.1).</li>
 <li>A user with <strong>Site Admin / Root Scope Owner</strong> rights,
 or an API key with the <code>external_integration</code> capability for
 the API path (§9).</li>
@@ -603,14 +612,26 @@ Send F5 flow telemetry to CSW via IPFIX</h2>
 <p>This path gives CSW <strong>visibility</strong> into traffic passing
 through the BIG-IP — essential because SNAT/Auto-Map otherwise hides the
 client identity from backend workloads.</p>
-<h3 id="csw-side-stand-up-an-ipfix-collector">8.1 CSW side — stand up an
-IPFIX collector</h3>
+<h3 id="csw-side-stand-up-the-f5-connector">8.1 CSW side — stand up the
+F5 connector</h3>
+<blockquote>
+<p><strong>Use the F5 connector, not the generic NetFlow/IPFIX
+connector.</strong> Both listen for IPFIX, but only the <strong>F5
+connector</strong> performs the <strong>NAT stitching</strong> that
+correlates the client-side flow with the server-side flow. The generic
+NetFlow connector will happily ingest the records and leave you with two
+unrelated flows and no visibility past the SNAT address — which is the
+entire reason for doing this.</p>
+</blockquote>
 <ol type="1">
-<li>Deploy a CSW <strong>Ingest (NetFlow/IPFIX) virtual
-appliance</strong> if you don’t have one.</li>
-<li>Add a <strong>NetFlow/IPFIX connector</strong>; note its
-<strong>listening IP and UDP port</strong>
-(e.g. <code>4739</code>).</li>
+<li>Deploy a CSW <strong>Ingest virtual appliance</strong> if you don’t
+have one (8 vCPU / 8 GB / 250 GB per the Compatibility Matrix).</li>
+<li>Add an <strong>F5 connector</strong>; note its <strong>listening IP
+and UDP port</strong> (e.g. <code>4739</code>).</li>
+<li><em>(Optional)</em> Supply an <strong>LDAP configuration</strong> to
+the connector. Where user data is available, it annotates client IPs
+with <strong>user information</strong>, on both the client-side and
+server-side flows.</li>
 </ol>
 <h3 id="f5-side-export-ipfix">8.2 F5 side — export IPFIX</h3>
 <p>On the BIG-IP (names vary slightly by TMOS version): 1.
@@ -625,8 +646,14 @@ allows the F5 <strong>self-IP → CSW ingest collector</strong> on the
 chosen UDP port.</p>
 <h3 id="verify-flows">8.3 Verify flows</h3>
 <p>In CSW, open <strong>Investigate → Flows</strong> (flow explorer) and
-filter for traffic to your VIPs. You should see load-balanced flows,
-letting ADM stitch the client → VIP → pool-member relationship.</p>
+filter for traffic to your VIPs. You should see the
+<strong>stitched</strong> client → VIP → pool-member relationship — the
+real client against the real backend, not a flow that stops at the SNAT
+address.</p>
+<p><strong>The stitching happens in the connector, before the records
+reach flow analysis.</strong> It is not something ADM does afterwards.
+If flows arrive but remain unstitched, the problem is the connector type
+or the exported IPFIX fields — see §11.</p>
 <blockquote>
 <p>The F5 video walkthroughs (§10) demonstrate IPFIX export, plus APM
 and AFM context, on the BIG-IP.</p>
@@ -778,6 +805,22 @@ all CSW rules</strong> from the VIP — expected behavior.</td>
 <td>Check the F5 log publisher/destination points at the ingest
 collector IP:UDP port and that the firewall permits UDP from the F5
 self-IP.</td>
+</tr>
+<tr>
+<td><strong>Flows arrive, but are not stitched</strong></td>
+<td>Most often the <strong>wrong connector type</strong> — the generic
+NetFlow/IPFIX connector ingests the records but does
+<strong>not</strong> correlate the client-side and server-side halves.
+Confirm you are running the <strong>F5 connector</strong>. If the
+connector is correct, the <strong>IPFIX template and exported
+fields</strong> on the BIG-IP are the next thing to check: stitching is
+only as good as the records the F5 sends.</td>
+</tr>
+<tr>
+<td><strong>No user information on flows</strong></td>
+<td>User annotation requires an <strong>LDAP configuration</strong> on
+the F5 connector, and is only populated where user data is
+available.</td>
 </tr>
 </tbody>
 </table>

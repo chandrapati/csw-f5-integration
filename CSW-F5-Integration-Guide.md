@@ -3,7 +3,7 @@
 A step-by-step, **beginner-friendly** guide to integrating **F5 BIG-IP** with **Cisco Secure Workload (CSW)**. It covers the two ways CSW and F5 work together:
 
 1. **External Orchestrator (`type: f5`)** — CSW imports F5 **virtual servers** as *service inventory* (labels), and can **push enforcement policy** back to the BIG-IP as security rules.
-2. **Flow telemetry (IPFIX)** — the BIG-IP streams **IPFIX/NetFlow** to a CSW **ingest appliance** so CSW can *see* load-balanced and SNAT'd traffic.
+2. **Flow telemetry (IPFIX)** — the BIG-IP streams **IPFIX** to the **F5 connector** on a CSW **ingest appliance**, which **stitches the NATed flows** so CSW can *see* the real client behind load-balanced and SNAT'd traffic.
 
 > **⚠ Disclaimer:** This is a **community reference guide** prepared by Cisco Solutions Engineering — not an official Cisco product document. Always refer to the [official Cisco Secure Workload documentation](https://www.cisco.com/c/en/us/support/security/tetration/series.html) and the [Compatibility Matrix](https://www.cisco.com/c/m/en_us/products/security/secure-workload-compatibility-matrix.html) for authoritative, up-to-date guidance.
 
@@ -21,7 +21,7 @@ If you've never touched either product, here's the mental model:
 | Problem F5 introduces | What the integration gives you |
 |---|---|
 | The load balancer is a "black box" — CSW doesn't know which VIPs map to which services | **External Orchestrator** imports each virtual server as a labeled **service inventory** item (`service_name`, `orchestrator_*`) |
-| SNAT hides the real client IP, so backend flows all look like they come from the F5 | **IPFIX telemetry** from the BIG-IP lets CSW **stitch** the client → VIP → pool-member path for accurate visibility |
+| SNAT hides the real client IP, so backend flows all look like they come from the F5 | The **F5 connector** ingests IPFIX from the BIG-IP and **stitches** the client-side and server-side halves into one client → VIP → pool-member flow |
 | You want the load balancer to enforce your segmentation policy | **Policy enforcement** translates CSW policies into F5 security rules and deploys them via the REST API |
 
 **Which path do you need?**
@@ -36,12 +36,12 @@ If you've never touched either product, here's the mental model:
 
 ![CSW and F5 BIG-IP Integration Architecture](csw-f5-architecture.png)
 
-*Two independent data paths. **Top:** the External Orchestrator uses the F5 REST API (HTTPS) to import virtual servers as service-inventory labels and to push enforcement rules back to the BIG-IP. **Bottom:** the BIG-IP exports IPFIX/NetFlow to a CSW ingest appliance for load-balanced flow visibility.*
+*Two independent data paths, travelling in opposite directions. **Top:** CSW **pulls** — the External Orchestrator uses the F5 REST API (HTTPS) to import virtual servers as service-inventory labels and to push enforcement rules back to the BIG-IP. **Bottom:** the BIG-IP **pushes** — it exports IPFIX to the F5 connector on a CSW ingest appliance, which stitches the NATed flows.*
 
 | Path | Direction | Transport | Purpose |
 |---|---|---|---|
 | **External Orchestrator** | CSW ⇄ F5 | HTTPS REST API (iControl) | Import virtual servers → labels; push policy rules to F5 |
-| **Flow telemetry** | F5 → CSW ingest appliance | IPFIX / NetFlow (UDP) | See client → VIP → pool-member flows through the LB |
+| **Flow telemetry** | F5 → CSW ingest appliance | IPFIX (UDP) | **F5 connector** stitches the NATed halves into one client → VIP → pool-member flow |
 
 ---
 
@@ -78,7 +78,7 @@ Use these in **inventory search**, **scopes**, and **policies** — for example,
 
 ### Cisco Secure Workload side
 - CSW **4.x** (on-prem or SaaS). Orchestrators live under **Manage → External Orchestrators**.
-- For IPFIX: a deployed **Ingest (NetFlow/IPFIX) virtual appliance** with a **NetFlow/IPFIX connector** (8 vCPU / 8 GB / 250 GB per the Compatibility Matrix).
+- For IPFIX: a deployed **Ingest virtual appliance** with an **F5 connector** (8 vCPU / 8 GB / 250 GB per the Compatibility Matrix). **Use the F5 connector, not the generic NetFlow/IPFIX connector** — only the F5 connector does NAT stitching (§8.1).
 - A user with **Site Admin / Root Scope Owner** rights, or an API key with the `external_integration` capability for the API path (§9).
 - For **SaaS / non-routable F5**: a healthy **Secure Connector** tunnel (§4.1).
 
@@ -214,9 +214,13 @@ When pods are exposed externally via a Kubernetes **ingress** object, CSW can en
 
 This path gives CSW **visibility** into traffic passing through the BIG-IP — essential because SNAT/Auto-Map otherwise hides the client identity from backend workloads.
 
-### 8.1 CSW side — stand up an IPFIX collector
-1. Deploy a CSW **Ingest (NetFlow/IPFIX) virtual appliance** if you don't have one.
-2. Add a **NetFlow/IPFIX connector**; note its **listening IP and UDP port** (e.g. `4739`).
+### 8.1 CSW side — stand up the F5 connector
+
+> **Use the F5 connector, not the generic NetFlow/IPFIX connector.** Both listen for IPFIX, but only the **F5 connector** performs the **NAT stitching** that correlates the client-side flow with the server-side flow. The generic NetFlow connector will happily ingest the records and leave you with two unrelated flows and no visibility past the SNAT address — which is the entire reason for doing this.
+
+1. Deploy a CSW **Ingest virtual appliance** if you don't have one (8 vCPU / 8 GB / 250 GB per the Compatibility Matrix).
+2. Add an **F5 connector**; note its **listening IP and UDP port** (e.g. `4739`).
+3. *(Optional)* Supply an **LDAP configuration** to the connector. Where user data is available, it annotates client IPs with **user information**, on both the client-side and server-side flows.
 
 ### 8.2 F5 side — export IPFIX
 On the BIG-IP (names vary slightly by TMOS version):
@@ -227,7 +231,9 @@ On the BIG-IP (names vary slightly by TMOS version):
 5. Ensure firewall allows the F5 **self-IP → CSW ingest collector** on the chosen UDP port.
 
 ### 8.3 Verify flows
-In CSW, open **Investigate → Flows** (flow explorer) and filter for traffic to your VIPs. You should see load-balanced flows, letting ADM stitch the client → VIP → pool-member relationship.
+In CSW, open **Investigate → Flows** (flow explorer) and filter for traffic to your VIPs. You should see the **stitched** client → VIP → pool-member relationship — the real client against the real backend, not a flow that stops at the SNAT address.
+
+**The stitching happens in the connector, before the records reach flow analysis.** It is not something ADM does afterwards. If flows arrive but remain unstitched, the problem is the connector type or the exported IPFIX fields — see §11.
 
 > The F5 video walkthroughs (§10) demonstrate IPFIX export, plus APM and AFM context, on the BIG-IP.
 
@@ -295,6 +301,8 @@ Curated from the [CSW-User-Education](https://github.com/chandrapati/CSW-User-Ed
 | **HA failover misses virtual servers** | Enable **config-sync** on the HA pair; if using **Auto-Map** (not SNAT pool), configure the **floating Self-IP** on the primary. |
 | **Enforcement removed unexpectedly** | Disabling enforcement or deleting the orchestrator **clears all CSW rules** from the VIP — expected behavior. |
 | **No IPFIX flows in CSW** | Check the F5 log publisher/destination points at the ingest collector IP:UDP port and that the firewall permits UDP from the F5 self-IP. |
+| **Flows arrive, but are not stitched** | Most often the **wrong connector type** — the generic NetFlow/IPFIX connector ingests the records but does **not** correlate the client-side and server-side halves. Confirm you are running the **F5 connector**. If the connector is correct, the **IPFIX template and exported fields** on the BIG-IP are the next thing to check: stitching is only as good as the records the F5 sends. |
+| **No user information on flows** | User annotation requires an **LDAP configuration** on the F5 connector, and is only populated where user data is available. |
 
 ---
 

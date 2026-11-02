@@ -17,7 +17,7 @@ A step-by-step, **beginner-friendly** integration guide for **F5 BIG-IP** + **Ci
 | Area | Detail |
 |---|---|
 | **Path 1 — External Orchestrator** (`type: f5`) | Import F5 **virtual servers** as *service inventory* labels; optionally **enforce policy** to the BIG-IP |
-| **Path 2 — Flow telemetry** | BIG-IP exports **IPFIX/NetFlow** to a CSW ingest appliance for load-balanced flow visibility |
+| **Path 2 — Flow telemetry** | BIG-IP exports **IPFIX** to the **F5 connector** on a CSW ingest appliance, which **stitches the NATed flows** |
 | **Transport** | HTTPS iControl REST API (orchestrator) · IPFIX/UDP (telemetry) |
 | **Enforcement** | CSW translates policies → F5 security rules (requires **write** creds) |
 | **Connectivity** | Direct (on-prem) or via **Secure Connector** tunnel (SaaS / non-routable) |
@@ -32,7 +32,7 @@ A step-by-step, **beginner-friendly** integration guide for **F5 BIG-IP** + **Ci
 - F5 BIG-IP with reachable **iControl REST API** (HTTPS/443)
 - F5 service account — **read-only** for labels, **read+write** for enforcement
 - CSW 4.x with Site Admin / Root Scope Owner rights
-- (IPFIX) a CSW **Ingest** appliance with a **NetFlow/IPFIX** connector
+- (IPFIX) a CSW **Ingest** appliance with an **F5 connector** — not the generic NetFlow/IPFIX connector; only the F5 connector does NAT stitching
 - (SaaS only) a healthy **Secure Connector** tunnel
 - Firewall: HTTPS (TCP/443) CSW → F5; IPFIX (UDP) F5 self-IP → CSW ingest collector
 
@@ -47,7 +47,7 @@ A step-by-step, **beginner-friendly** integration guide for **F5 BIG-IP** + **Ci
 6. Later, turn on **Enable Enforcement** + enforce a workspace policy (needs write creds)
 
 **Path 2 — Flow visibility (IPFIX):**
-1. Deploy/confirm a CSW **Ingest** appliance + **NetFlow/IPFIX** connector (note IP:UDP port)
+1. Deploy/confirm a CSW **Ingest** appliance + **F5 connector** (note IP:UDP port). Optionally add an **LDAP config** to annotate client IPs with user info
 2. On F5: create Pool → IPFIX **Log Destination** → **Log Publisher** → attach to virtual servers
 3. Verify in `Investigate → Flows`
 
