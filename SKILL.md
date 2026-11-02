@@ -81,8 +81,10 @@ sequenceDiagram
     Note over F5,P: server-side flow<br/>source is now the SNAT address
     F5-->>K: 3. IPFIX export of both halves
     Note over K: 4. NAT stitching<br/>correlates the two halves
-    K->>SW: 5. one flow — real client to real backend
+    K->>SW: 5. both halves, annotated and correlated
 ```
+
+> **Precision.** The documentation says the connector **stitches the NATed flows** and that **both client-side and server-side flows are annotated**. Describe the result as the two halves being correlated so the client-to-backend path can be followed — not as the two records being merged into one. If you need to state it more strongly than that, verify first.
 
   The connector **correlates both halves**, so CSW sees the real client talking to the real backend rather than two unrelated flows.
 
