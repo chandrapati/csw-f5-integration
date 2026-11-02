@@ -16,18 +16,9 @@ A step-by-step, **beginner-friendly** integration guide for **F5 BIG-IP** + **Ci
 
 **A load balancer breaks one conversation into two, and a segmentation product that only sees one half cannot write a policy about it.**
 
-When `orders-app` calls a service through the BIG-IP, the BIG-IP re-sources the connection. The backend never sees the real client — it sees the SNAT address. Two unrelated-looking flows:
+When `orders-app` calls a service through the BIG-IP, the BIG-IP re-sources the connection. The backend never sees the real client — it sees the SNAT address. From the backend's point of view **every** client sharing that pool is one address, so a policy written against it allows all of them.
 
-```
-flow 1:   192.0.2.50      →  198.51.100.10:443     the client reaching the VIP
-flow 2:   198.51.100.200  →  203.0.113.21:8443     the SNAT address reaching the pool member
-```
-
-Nothing connects them. From the backend's point of view **every** client in the estate is one address — so a policy written against it allows **everything** sharing that SNAT pool. That is worse than imprecise.
-
-![One request through the BIG-IP and how the real client is recovered](diagrams/02-worked-example.svg)
-
-*The **F5 connector** ingests IPFIX for both halves and stitches them, recovering the client-to-backend path. The **External Orchestrator** separately turns `198.51.100.10:443` into a nameable `service_name = payments-vip`, so you can write policy about it.*
+![One request through the BIG-IP, and what the F5 connector recovers](diagrams/f5-one-request.png)
 
 > **Scope boundary, stated up front:** this is **L3/L4**. You get the real client, the real backend, ports and protocol. You do **not** get L7 — if one VIP on port 443 fronts several applications separated by **URL or URI**, nothing here distinguishes them.
 
@@ -35,21 +26,17 @@ Nothing connects them. From the backend's point of view **every** client in the 
 
 ---
 
-## What This Covers
+## Two paths
 
-| Area | Detail |
-|---|---|
-| **Path 1 — External Orchestrator** (`type: f5`) | Import F5 **virtual servers** as *service inventory* labels; optionally **enforce policy** to the BIG-IP |
-| **Path 2 — Flow telemetry** | BIG-IP exports **IPFIX** to the **F5 connector** on a CSW ingest appliance, which **stitches the NATed flows** |
-| **Transport** | HTTPS iControl REST API (orchestrator) · IPFIX/UDP (telemetry) |
-| **Enforcement** | CSW translates policies → F5 security rules (requires **write** creds) |
-| **Connectivity** | Direct (on-prem) or via **Secure Connector** tunnel (SaaS / non-routable) |
-| **Result** | `orchestrator_*` + `service_name` labels, F5 rule deployment, LB flow visibility |
-| **Verified against** | CSW 4.x on-prem and SaaS; F5 BIG-IP v12.1.1+ |
+![Two paths: the F5 connector and the External Orchestrator](diagrams/f5-two-paths.png)
 
-![Choosing between the External Orchestrator and the F5 connector](diagrams/01-which-path.svg)
+Verified against CSW 4.x, on-prem and SaaS, and F5 BIG-IP v12.1.1+.
 
-*The two paths are independent and fail independently. A sensible order is **connector first, orchestrator second** — visibility before enforcement.*
+## Enforcement
+
+![Three gates before a rule lands on the BIG-IP](diagrams/f5-three-gates.png)
+
+The lab checklist — catch-all deny, both directions, and what removal does to the VIP — is [§7.3](CSW-F5-Integration-Guide.md#73-prove-this-in-a-lab-before-production).
 
 ---
 
@@ -108,9 +95,9 @@ Curated from the [CSW-User-Education](https://github.com/chandrapati/CSW-User-Ed
 
 ![CSW and F5 BIG-IP Integration Architecture](csw-f5-architecture.png)
 
-*Two data paths travelling in **opposite directions**. CSW **pulls** over HTTPS REST — the External Orchestrator imports virtual servers as service labels and pushes enforcement rules back. The BIG-IP **pushes** IPFIX to the F5 connector, which stitches the NATed halves.*
+*Two data paths, opposite directions. CSW **pulls** inventory and pushes rules over iControl REST. The BIG-IP **pushes** IPFIX. The lower arrow on this picture is that IPFIX export, and it belongs on the **F5 connector** (UDP 4739). The generic NetFlow connector is a different listener and does not correlate NAT.*
 
-**The direction of travel is what people get wrong.** Flows arrive because the BIG-IP sends them; inventory and enforcement happen because CSW reaches out. [`SKILL.md`](SKILL.md) has the mechanism in detail.
+**The direction of travel is what people get wrong.** Flows arrive because the BIG-IP sends them. Inventory and enforcement happen because CSW reaches out. CSW does not read the BIG-IP session table. [`SKILL.md`](SKILL.md) is the mechanism, including that precision.
 
 ---
 
@@ -123,7 +110,7 @@ Curated from the [CSW-User-Education](https://github.com/chandrapati/CSW-User-Ed
 | [`CSW-F5-Integration-Guide.md`](CSW-F5-Integration-Guide.md) | Full step-by-step guide (Markdown source) |
 | [`CSW-F5-Integration-Guide.html`](CSW-F5-Integration-Guide.html) | Styled HTML — open in browser (embedded YouTube player) |
 | [`csw-f5-architecture.png`](csw-f5-architecture.png) | Architecture diagram |
-| [`diagrams/`](diagrams) | The guide's six diagrams. `.mmd` files are the editable source; `.svg` files are what the guide references. Regenerate with [`diagrams/render.sh`](diagrams/render.sh) |
+| [`diagrams/`](diagrams) | Readable PNGs for the README (`f5-one-request.png`, `f5-two-paths.png`, `f5-three-gates.png`, `f5-logging-chain.png`). HTML sources are in `diagrams/branded/`. The `.mmd` / `.svg` set is the earlier flowchart source |
 | [`build.sh`](build.sh) | Regenerate HTML/PDF from Markdown (requires pandoc + Chrome) |
 | [`docs/CUSTOMER-HANDOFF.md`](docs/CUSTOMER-HANDOFF.md) | Checklist to hand to the customer's F5 / network team |
 
@@ -139,62 +126,19 @@ Curated from the [CSW-User-Education](https://github.com/chandrapati/CSW-User-Ed
 | `orchestrator_system/namespace` | *(partition)* |
 | `orchestrator_annotation/snat_address` | *(SNAT address)* |
 
-> **Important:** Only **single-address** VIPs are imported (not subnet VIPs). Enabling policy enforcement makes **CSW the owner** of the virtual server's security rules; disabling it **removes** those rules from the BIG-IP.
-
-### Enforcement in one picture
-
-Three gates stand between a CSW policy and a rule on the BIG-IP. A policy failing any of them produces nothing.
-
-![How a CSW policy becomes a rule on the BIG-IP](diagrams/07-enforcement-model.svg)
-
-1. **The policy must name the F5 virtual server as the *provider*.** CSW policies are directional — consumer reaches provider. A policy where the F5 service is the consumer deploys nothing.
-2. **Enable Enforcement on the orchestrator is a permission, not an action.** It deploys nothing by itself and needs write credentials.
-3. **The workspace must be enforced.** That is what actually writes the rules.
-
-Once on, **CSW is the source of truth and the F5 UI is effectively read-only for those rules** — manual edits are reverted as drift. Tell the F5 team before switching it on.
-
-> **Verify in a lab first:** whether CSW writes a **catch-all deny** decides if enabling enforcement is purely additive or can block traffic you never wrote a policy for. [§7.3](CSW-F5-Integration-Guide.md#73-prove-this-in-a-lab-before-production) lists what to establish.
+Only **single-address** VIPs are imported. A subnet VIP stays out of inventory.
 
 ---
 
-## Step-by-Step Guides
+## Related, for this integration
 
-> **Legend:** 🎬 video · 📘 guide · 📄 doc
-
-Hands-on integration and deployment guides — follow these top to bottom to build out a deployment:
-
-| Guide | Description | Best for |
-|-------|-------------|---------|
-| [📘 Agent Installation](https://github.com/chandrapati/CSW-Agent-Installation-Guide) | Deploy CSW agents on Linux / Windows / cloud | Day-1 sensor deployment |
-| [📘 Policy Lifecycle](https://github.com/chandrapati/CSW-Policy-Lifecycle) | Policy discovery → enforcement workflow | Policy management |
-| [📘 ISE / pxGrid](https://github.com/chandrapati/csw-ise-integration) | ISE/pxGrid: user-identity–aware microsegmentation | Identity & Zero Trust |
-| [📘 AnyConnect NVM](https://github.com/chandrapati/csw-anyconnect-nvm) | Endpoint process flows + user identity via NVM | Endpoint telemetry |
-| [📘 ServiceNow CMDB](https://github.com/chandrapati/csw-servicenow-integration) | ServiceNow CMDB label enrichment for workload scopes | CMDB-driven policy |
-| [📘 Infoblox](https://github.com/chandrapati/csw-infoblox-integration) | Infoblox IPAM/DNS extensible-attribute label enrichment | IPAM/DNS-driven policy |
-| [📘 F5 BIG-IP](https://github.com/chandrapati/csw-f5-integration) | F5 virtual-server labels, policy enforcement, IPFIX flow visibility | Load balancer segmentation |
-| [📘 NetScaler ADC](https://github.com/chandrapati/csw-netscaler-integration) | NetScaler LB virtual-server labels, ACL enforcement + AppFlow/IPFIX flow visibility | Load balancer segmentation |
-| [📘 AWS Connector](https://github.com/chandrapati/csw-aws-connector) | EC2 tag ingestion + VPC flow logs + Security Group enforcement | AWS workloads |
-| [📘 Azure Connector](https://github.com/chandrapati/csw-azure-connector) | Azure VM tag ingestion + VNet flow logs + NSG enforcement | Azure workloads |
-| [📘 GCP Connector](https://github.com/chandrapati/csw-gcp-connector) | GCE label ingestion + VPC flow logs + firewall enforcement | GCP workloads |
-| [📘 NetFlow](https://github.com/chandrapati/csw-netflow-integration) | NetFlow v9/IPFIX agentless flow ingestion from switches | Network fabric visibility |
-| [📘 ERSPAN](https://github.com/chandrapati/csw-erspan-integration) | Agentless packet mirroring for legacy / OT / IoT devices | Deep agentless visibility |
-| [📘 Secure Firewall](https://github.com/chandrapati/CSW-Secure-Firewall-Integration-Guide) | NSEL flow ingestion from Cisco Secure Firewall (FTD/ASA) | Firewall flow visibility |
-| [📘 Siwapp Lab App (vSphere)](https://github.com/chandrapati/siwapp-app-vsphere) | Terraform multi-tier demo app (PostgreSQL + HAProxy + Elixir) on any vCenter lab — a realistic east-west segmentation target | Lab / POV demo workloads |
-| [📘 Splunk Integration](https://github.com/chandrapati/csw-splunk-integration) | CSW syslog alerts → Splunk SIEM | SecOps / SIEM teams |
-
-## Resources
-
-> **Legend:** 🎬 video · 📘 guide · 📄 doc
-
-Learning paths, reference material, and day-2 tooling:
-
-| Resource | Description | Best for |
-|----------|-------------|---------|
-| [📘 User Education](https://github.com/chandrapati/CSW-User-Education) | Onboarding guides, concept explainers, and curated video library | New CSW users |
-| [📘 Compliance Mapping](https://github.com/chandrapati/CSW-Compliance-Mapping) | Map CSW controls to NIST, PCI-DSS, HIPAA, CIS | Compliance & audit |
-| [📘 Tenant Insights](https://github.com/chandrapati/CSW-Tenant-Insights) | Tenant-level reporting and analytics | Visibility metrics |
-| [📘 Operations Toolkit](https://github.com/chandrapati/CSW-Operations-Toolkit) | Day-2 ops scripts: health checks, reporting, policy analysis | Ongoing operations |
-| [📄 Supported OS & Compatibility Matrix](https://www.cisco.com/c/m/en_us/products/security/secure-workload-compatibility-matrix.html) | Cisco's authoritative list of supported agent operating systems, external systems, and connector requirements | Platform planning & prerequisites |
-
-> **Suggested customer journey:**
-> User Education → Agent Installation → Policy Lifecycle → ISE/pxGrid → ServiceNow CMDB → Infoblox → F5 BIG-IP → NetScaler ADC → Splunk Integration → Compliance Mapping → Operations Toolkit
+| | |
+|---|---|
+| [Full guide](CSW-F5-Integration-Guide.md) · [HTML](CSW-F5-Integration-Guide.html) | Every step, the AFM chain, and the lab checklist |
+| [How it works](SKILL.md) | IPFIX collection, correlation, the orchestrator snapshot |
+| [Handoff checklist](docs/CUSTOMER-HANDOFF.md) | What to send the F5 and network team |
+| [Ingest appliance](https://github.com/chandrapati/csw-ingest-connector) | Where the F5 connector runs |
+| [NetFlow connector](https://github.com/chandrapati/csw-netflow-integration) | Routers and switches. Not the listener for F5 NAT |
+| [Secure Connector](https://github.com/chandrapati/csw-secure-connector) | The tunnel when CSW cannot reach the BIG-IP |
+| [Policy lifecycle](https://github.com/chandrapati/CSW-Policy-Lifecycle) | What "the workspace is enforced" means |
+| [Compatibility Matrix](https://www.cisco.com/c/m/en_us/products/security/secure-workload-compatibility-matrix.html) | Supported BIG-IP versions and connector requirements |

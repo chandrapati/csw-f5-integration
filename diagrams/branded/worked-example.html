@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    width: 1000px;
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    background: #fff;
+    color: #0d274d;
+    padding: 36px 40px 32px;
+  }
+  .bar { height: 8px; background: linear-gradient(90deg, #00205b 0%, #007bc7 55%, #00bceb 100%); margin: -36px -40px 28px; }
+  h1 { font-size: 40px; line-height: 1.15; font-weight: 700; color: #00205b; }
+  .sub { font-size: 24px; color: #3d5a80; margin: 10px 0 26px; line-height: 1.35; }
+  .card {
+    border-radius: 14px;
+    padding: 18px 22px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+  }
+  .who { font-size: 30px; font-weight: 700; }
+  .addr { font-size: 26px; font-variant-numeric: tabular-nums; }
+  .client { background: #f4f7fb; border: 2px solid #c5d4e8; }
+  .vip { background: #fff5f6; border: 3px solid #e4002b; }
+  .snat { background: #fff8ee; border: 2px solid #e6a23c; }
+  .pool { background: #f3fbf6; border: 2px solid #1f8a4c; }
+  .tag { font-size: 18px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+  .client .tag { color: #3d5a80; }
+  .vip .tag { color: #e4002b; }
+  .snat .tag { color: #b86e00; }
+  .pool .tag { color: #1f8a4c; }
+  .arrow {
+    text-align: center;
+    font-size: 22px;
+    color: #007bc7;
+    font-weight: 650;
+    padding: 8px 0;
+  }
+  .result {
+    margin-top: 22px;
+    background: #f0f7ff;
+    border-radius: 14px;
+    padding: 20px 22px;
+    border: 2px solid #cce4f6;
+  }
+  .result h2 { font-size: 26px; color: #007bc7; margin-bottom: 8px; }
+  .result p { font-size: 24px; line-height: 1.4; }
+  .foot { margin-top: 16px; font-size: 20px; color: #3d5a80; line-height: 1.4; }
+</style>
+</head>
+<body>
+  <div class="bar"></div>
+  <h1>One request. Two flows.</h1>
+  <p class="sub">orders-app calls payments through the BIG-IP. The backend never sees 192.0.2.50.</p>
+
+  <div class="card client">
+    <div><div class="tag">Client</div><div class="who">orders-app</div></div>
+    <div class="addr">192.0.2.50</div>
+  </div>
+  <div class="arrow">client-side half &nbsp;→&nbsp; the VIP</div>
+  <div class="card vip">
+    <div><div class="tag">F5 virtual server</div><div class="who">payments-vip</div></div>
+    <div class="addr">198.51.100.10:443</div>
+  </div>
+  <div class="arrow">BIG-IP re-sources the connection</div>
+  <div class="card snat">
+    <div><div class="tag">SNAT address</div><div class="who">what the backend sees</div></div>
+    <div class="addr">198.51.100.200</div>
+  </div>
+  <div class="arrow">server-side half &nbsp;→&nbsp; the pool member</div>
+  <div class="card pool">
+    <div><div class="tag">Pool member</div><div class="who">payments-api</div></div>
+    <div class="addr">203.0.113.21:8443</div>
+  </div>
+
+  <div class="result">
+    <h2>What the F5 connector adds</h2>
+    <p>The BIG-IP pushes IPFIX for both halves. The F5 connector correlates them and annotates each one, so Secure Workload can follow the real client to the real backend. The two records stay two records.</p>
+  </div>
+  <p class="foot">A policy written on 198.51.100.200 allows every client that shares that SNAT pool. The External Orchestrator is a separate path: it names this VIP <b>service_name = payments-vip</b> so policy can name the service.</p>
+</body>
+</html>

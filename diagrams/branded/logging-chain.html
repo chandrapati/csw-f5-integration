@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    width: 1000px;
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    background: #fff;
+    color: #0d274d;
+    padding: 36px 40px 32px;
+  }
+  .bar { height: 8px; background: linear-gradient(90deg, #00205b 0%, #007bc7 55%, #00bceb 100%); margin: -36px -40px 28px; }
+  h1 { font-size: 40px; line-height: 1.15; font-weight: 700; color: #00205b; }
+  .sub { font-size: 24px; color: #3d5a80; margin: 10px 0 22px; line-height: 1.35; }
+  .step {
+    display: grid;
+    grid-template-columns: 86px 1fr;
+    gap: 16px;
+    align-items: center;
+    border-radius: 14px;
+    padding: 16px 20px;
+    margin-bottom: 12px;
+    background: #f4f7fb;
+    border: 2px solid #c5d4e8;
+  }
+  .step.on { background: #f0f7ff; border-color: #007bc7; }
+  .n {
+    width: 86px; height: 72px; border-radius: 12px;
+    background: #007bc7; color: #fff;
+    font-size: 32px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+  h2 { font-size: 28px; }
+  p { font-size: 22px; color: #243e66; margin-top: 2px; }
+  .note { margin-top: 8px; font-size: 22px; line-height: 1.4; color: #3d5a80; }
+</style>
+</head>
+<body>
+  <div class="bar"></div>
+  <h1>Nothing flows until the publisher is attached.</h1>
+  <p class="sub">The pool, the destination, and the publisher can all exist while the virtual server stays silent. Attachment is the step that starts IPFIX.</p>
+  <div class="step"><div class="n">1</div><div><h2>Pool</h2><p>Where the records go — the F5 connector on the Ingest appliance.</p></div></div>
+  <div class="step"><div class="n">2</div><div><h2>IPFIX log destination</h2><p>What format. Protocol IPFIX, transport UDP.</p></div></div>
+  <div class="step"><div class="n">3</div><div><h2>Log publisher</h2><p>The named handle the logging profile refers to.</p></div></div>
+  <div class="step on"><div class="n">4</div><div><h2>Attached to the virtual server</h2><p>Normally through an AFM network-firewall logging profile. This is what starts the export.</p></div></div>
+  <p class="note">AFM is the primary documented path. AVR and an iRule are named alternatives to confirm on that TMOS. Exact AFM menu labels vary by release — verify them on the box. The F5 connector listens on UDP 4739, not the NetFlow connector on 4729.</p>
+</body>
+</html>

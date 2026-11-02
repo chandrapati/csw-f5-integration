@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    width: 1000px;
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    background: #fff;
+    color: #0d274d;
+    padding: 36px 40px 32px;
+  }
+  .bar { height: 8px; background: linear-gradient(90deg, #00205b 0%, #007bc7 55%, #00bceb 100%); margin: -36px -40px 28px; }
+  h1 { font-size: 40px; line-height: 1.15; font-weight: 700; color: #00205b; }
+  .sub { font-size: 24px; color: #3d5a80; margin: 10px 0 22px; line-height: 1.35; }
+  .card { border-radius: 14px; padding: 22px 24px 20px; margin-bottom: 16px; }
+  .kicker { font-size: 18px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+  h2 { font-size: 32px; margin: 4px 0 12px; }
+  li { font-size: 24px; line-height: 1.35; margin: 0 0 8px 22px; }
+  .see { background: #f0f7ff; border: 3px solid #007bc7; }
+  .see .kicker { color: #007bc7; }
+  .name { background: #f7f5ff; border: 3px solid #5b4b8a; }
+  .name .kicker { color: #5b4b8a; }
+  .order {
+    background: #00205b;
+    color: #fff;
+    border-radius: 14px;
+    padding: 18px 22px;
+    font-size: 24px;
+    line-height: 1.4;
+  }
+  .order b { color: #7dd3fc; }
+</style>
+</head>
+<body>
+  <div class="bar"></div>
+  <h1>Two paths. They fail independently.</h1>
+  <p class="sub">Seeing the real client and naming the virtual server are different integrations. Either one can be healthy while the other is dark.</p>
+
+  <div class="card see">
+    <div class="kicker">Path 2 · do this first</div>
+    <h2>F5 connector — see the real client</h2>
+    <ul>
+      <li>The BIG-IP <b>pushes</b> IPFIX to the F5 connector on an Ingest appliance.</li>
+      <li>Default listen port is UDP <b>4739</b>.</li>
+      <li>Both halves are correlated and annotated. They are not merged into one record.</li>
+      <li>The generic NetFlow connector collects the same export and leaves the client behind the SNAT address.</li>
+    </ul>
+  </div>
+
+  <div class="card name">
+    <div class="kicker">Path 1 · after the picture is right</div>
+    <h2>External Orchestrator — name the VIP</h2>
+    <ul>
+      <li>Secure Workload <b>pulls</b> virtual servers over iControl REST.</li>
+      <li>Each single-address VIP becomes <b>service_name</b>.</li>
+      <li>Enforcement, when the three gates are open, pushes security rules back over the same API.</li>
+      <li>SaaS, or a BIG-IP CSW cannot route to, uses a Secure Connector tunnel.</li>
+    </ul>
+  </div>
+
+  <div class="order">Order that keeps a proof of value calm: <b>connector first, orchestrator second.</b> See the traffic, confirm it matches the estate, then name the VIPs and write policy.</div>
+</body>
+</html>

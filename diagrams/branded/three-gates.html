@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    width: 1000px;
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    background: #fff;
+    color: #0d274d;
+    padding: 36px 40px 32px;
+  }
+  .bar { height: 8px; background: linear-gradient(90deg, #00205b 0%, #007bc7 55%, #00bceb 100%); margin: -36px -40px 28px; }
+  h1 { font-size: 40px; line-height: 1.15; font-weight: 700; color: #00205b; }
+  .sub { font-size: 24px; color: #3d5a80; margin: 10px 0 22px; line-height: 1.35; }
+  .gate {
+    display: grid;
+    grid-template-columns: 86px 1fr;
+    gap: 16px;
+    align-items: center;
+    background: #f4f7fb;
+    border: 2px solid #c5d4e8;
+    border-radius: 14px;
+    padding: 16px 20px;
+    margin-bottom: 12px;
+  }
+  .n {
+    width: 86px; height: 86px; border-radius: 14px;
+    background: #00205b; color: #fff;
+    font-size: 40px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+  h2 { font-size: 28px; margin-bottom: 4px; }
+  p { font-size: 22px; line-height: 1.35; color: #243e66; }
+  .own {
+    margin-top: 8px;
+    background: #00205b;
+    color: #fff;
+    border-radius: 14px;
+    padding: 18px 22px;
+    font-size: 24px;
+    line-height: 1.4;
+  }
+  .own b { color: #7dd3fc; }
+  .lab { margin-top: 14px; font-size: 22px; line-height: 1.4; color: #3d5a80; }
+</style>
+</head>
+<body>
+  <div class="bar"></div>
+  <h1>Three gates. All three, or no rule.</h1>
+  <p class="sub">A policy that misses any gate deploys nothing to the BIG-IP. Enable Enforcement by itself writes nothing.</p>
+
+  <div class="gate">
+    <div class="n">1</div>
+    <div>
+      <h2>The provider is the F5 virtual server</h2>
+      <p>Policy is directional: consumer reaches provider. A policy that names the VIP as the consumer deploys nothing to the BIG-IP.</p>
+    </div>
+  </div>
+  <div class="gate">
+    <div class="n">2</div>
+    <div>
+      <h2>Enable Enforcement is on</h2>
+      <p>This is a permission, not an action. It needs write credentials on the F5 account. Left off, the orchestrator stays read-only.</p>
+    </div>
+  </div>
+  <div class="gate">
+    <div class="n">3</div>
+    <div>
+      <h2>The workspace is enforced</h2>
+      <p>This is the step that writes security rules to that virtual server over the REST API.</p>
+    </div>
+  </div>
+
+  <div class="own">Once those rules are on the VIP, <b>Secure Workload owns them.</b> A manual edit in the F5 UI is drift and is put back. Turning the orchestrator off, or deleting it, clears the CSW rules and leaves that VIP security policy empty. Tell the F5 team before switching it on.</div>
+  <p class="lab">Lab check before production: whether Secure Workload also writes a catch-all deny. That decides if enforcement is additive, or can block traffic nobody wrote a policy for.</p>
+</body>
+</html>

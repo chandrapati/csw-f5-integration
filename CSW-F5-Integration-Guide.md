@@ -3,7 +3,7 @@
 A step-by-step, **beginner-friendly** guide to integrating **F5 BIG-IP** with **Cisco Secure Workload (CSW)**. It covers the two ways CSW and F5 work together:
 
 1. **External Orchestrator (`type: f5`)** — CSW imports F5 **virtual servers** as *service inventory* (labels), and can **push enforcement policy** back to the BIG-IP as security rules.
-2. **Flow telemetry (IPFIX)** — the BIG-IP streams **IPFIX** to the **F5 connector** on a CSW **ingest appliance**, which **stitches the NATed flows** so CSW can *see* the real client behind load-balanced and SNAT'd traffic.
+2. **Flow telemetry (IPFIX)** — the BIG-IP streams **IPFIX** to the **F5 connector** on a CSW **ingest appliance**, which **correlates both halves and annotates them** so CSW can follow the real client behind SNAT. The two records stay two records.
 
 > **⚠ Disclaimer:** This is a **community reference guide** prepared by Cisco Solutions Engineering — not an official Cisco product document. Always refer to the [official Cisco Secure Workload documentation](https://www.cisco.com/c/en/us/support/security/tetration/series.html) and the [Compatibility Matrix](https://www.cisco.com/c/m/en_us/products/security/secure-workload-compatibility-matrix.html) for authoritative, up-to-date guidance.
 
@@ -21,12 +21,12 @@ If you've never touched either product, here's the mental model:
 | Problem F5 introduces | What the integration gives you |
 |---|---|
 | The load balancer is a "black box" — CSW doesn't know which VIPs map to which services | **External Orchestrator** imports each virtual server as a labeled **service inventory** item (`service_name`, `orchestrator_*`) |
-| SNAT hides the real client IP, so backend flows all look like they come from the F5 | The **F5 connector** ingests IPFIX from the BIG-IP and **stitches** the client-side and server-side halves into one client → VIP → pool-member flow |
+| SNAT hides the real client IP, so backend flows all look like they come from the F5 | The **F5 connector** ingests IPFIX for both halves, **correlates them, and annotates each one**, so the client-to-backend path can be followed |
 | You want the load balancer to enforce your segmentation policy | **Policy enforcement** translates CSW policies into F5 security rules and deploys them via the REST API |
 
 **Which path do you need?**
 
-![Choosing between the External Orchestrator and the F5 connector](diagrams/01-which-path.svg)
+![Two paths: the F5 connector and the External Orchestrator](diagrams/f5-two-paths.png)
 
 *Two independent paths. Pick by what you need; most mature deployments run both.*
 
@@ -74,7 +74,7 @@ This is also why a policy built on the SNAT address is dangerous rather than mer
 
 **The F5 connector fixes "who was the real client?"** The BIG-IP exports IPFIX records describing **both** halves. The connector correlates them — this is the **NAT stitching** — and annotates both, so the path from the real client through the VIP to the pool member can be followed instead of dead-ending at the SNAT address.
 
-![One request through the BIG-IP and how the real client is recovered](diagrams/02-worked-example.svg)
+![One request through the BIG-IP, and what the F5 connector recovers](diagrams/f5-one-request.png)
 
 *The BIG-IP re-sources the connection. The F5 connector correlates both halves so the client-to-backend path survives the SNAT.*
 
@@ -107,7 +107,7 @@ They are **independent**. Neither requires the other, and they fail independentl
 | Path | Direction | Transport | Purpose |
 |---|---|---|---|
 | **External Orchestrator** | CSW ⇄ F5 | HTTPS REST API (iControl) | Import virtual servers → labels; push policy rules to F5 |
-| **Flow telemetry** | F5 → CSW ingest appliance | IPFIX (UDP) | **F5 connector** stitches the NATed halves into one client → VIP → pool-member flow |
+| **Flow telemetry** | F5 → CSW ingest appliance | IPFIX (UDP) | **F5 connector** correlates both halves and annotates them. The records stay two records |
 
 ---
 
@@ -286,7 +286,7 @@ Each virtual server appears as a **service inventory** item characterized by its
 
 **Three things must line up before a single rule reaches the BIG-IP.** Most confusion about this feature comes from only knowing about one or two of them.
 
-![How a CSW policy becomes a rule on the BIG-IP](diagrams/07-enforcement-model.svg)
+![Three gates before a rule lands on the BIG-IP](diagrams/f5-three-gates.png)
 
 *Three gates. A policy that fails any of them produces nothing on the BIG-IP.*
 
@@ -380,7 +380,7 @@ This path gives CSW **visibility** into traffic passing through the BIG-IP — e
 
 **The shape of this is four objects chained together, and it trips people up because each one only points at the next.** Nothing is exported until the last link is attached to something that actually generates records:
 
-![The BIG-IP logging chain](diagrams/05-logging-chain.svg)
+![Nothing flows until the publisher is attached](diagrams/f5-logging-chain.png)
 
 *Each object only points at the next. Nothing is exported until the last link is attached.*
 
