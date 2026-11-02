@@ -12,6 +12,29 @@ A step-by-step, **beginner-friendly** integration guide for **F5 BIG-IP** + **Ci
 
 ---
 
+## The problem this solves
+
+**A load balancer breaks one conversation into two, and a segmentation product that only sees one half cannot write a policy about it.**
+
+When `orders-app` calls a service through the BIG-IP, the BIG-IP re-sources the connection. The backend never sees the real client — it sees the SNAT address. Two unrelated-looking flows:
+
+```
+flow 1:   192.0.2.50      →  198.51.100.10:443     the client reaching the VIP
+flow 2:   198.51.100.200  →  203.0.113.21:8443     the SNAT address reaching the pool member
+```
+
+Nothing connects them. From the backend's point of view **every** client in the estate is one address — so a policy written against it allows **everything** sharing that SNAT pool. That is worse than imprecise.
+
+![One request through the BIG-IP and how the real client is recovered](diagrams/02-worked-example.svg)
+
+*The **F5 connector** ingests IPFIX for both halves and stitches them, recovering the client-to-backend path. The **External Orchestrator** separately turns `198.51.100.10:443` into a nameable `service_name = payments-vip`, so you can write policy about it.*
+
+> **Scope boundary, stated up front:** this is **L3/L4**. You get the real client, the real backend, ports and protocol. You do **not** get L7 — if one VIP on port 443 fronts several applications separated by **URL or URI**, nothing here distinguishes them.
+
+[**→ Full explanation with the worked example**](CSW-F5-Integration-Guide.md#05-how-it-actually-works--a-worked-example)
+
+---
+
 ## What This Covers
 
 | Area | Detail |
@@ -24,6 +47,10 @@ A step-by-step, **beginner-friendly** integration guide for **F5 BIG-IP** + **Ci
 | **Result** | `orchestrator_*` + `service_name` labels, F5 rule deployment, LB flow visibility |
 | **Verified against** | CSW 4.x on-prem and SaaS; F5 BIG-IP v12.1.1+ |
 
+![Choosing between the External Orchestrator and the F5 connector](diagrams/01-which-path.svg)
+
+*The two paths are independent and fail independently. A sensible order is **connector first, orchestrator second** — visibility before enforcement.*
+
 ---
 
 ## Quick Start
@@ -34,7 +61,8 @@ A step-by-step, **beginner-friendly** integration guide for **F5 BIG-IP** + **Ci
 - CSW 4.x with Site Admin / Root Scope Owner rights
 - (IPFIX) a CSW **Ingest** appliance with an **F5 connector** — not the generic NetFlow/IPFIX connector; only the F5 connector does NAT stitching
 - (SaaS only) a healthy **Secure Connector** tunnel
-- Firewall: HTTPS (TCP/443) CSW → F5; IPFIX (UDP) F5 self-IP → CSW ingest collector
+- (IPFIX) on the F5 side, a module that can **export IPFIX** — normally **AFM**. Confirm what is licensed before planning
+- Firewall: HTTPS (TCP/443) CSW → F5; IPFIX (UDP) F5 **self-IP** → CSW ingest collector
 
 ### Steps (summary)
 
@@ -48,7 +76,7 @@ A step-by-step, **beginner-friendly** integration guide for **F5 BIG-IP** + **Ci
 
 **Path 2 — Flow visibility (IPFIX):**
 1. Deploy/confirm a CSW **Ingest** appliance + **F5 connector** (note IP:UDP port). Optionally add an **LDAP config** to annotate client IPs with user info
-2. On F5: create Pool → IPFIX **Log Destination** → **Log Publisher** → attach to virtual servers
+2. On F5: create Pool → IPFIX **Log Destination** → **Log Publisher** → attach to virtual servers (normally via an **AFM network-firewall logging profile**). The attachment is the step that actually starts data flowing
 3. Verify in `Investigate → Flows`
 
 **Verify labels:**
@@ -80,7 +108,9 @@ Curated from the [CSW-User-Education](https://github.com/chandrapati/CSW-User-Ed
 
 ![CSW and F5 BIG-IP Integration Architecture](csw-f5-architecture.png)
 
-*Two data paths: the External Orchestrator (HTTPS REST) imports virtual servers as service labels and pushes enforcement rules; IPFIX/NetFlow telemetry gives CSW load-balanced flow visibility.*
+*Two data paths travelling in **opposite directions**. CSW **pulls** over HTTPS REST — the External Orchestrator imports virtual servers as service labels and pushes enforcement rules back. The BIG-IP **pushes** IPFIX to the F5 connector, which stitches the NATed halves.*
+
+**The direction of travel is what people get wrong.** Flows arrive because the BIG-IP sends them; inventory and enforcement happen because CSW reaches out. [`SKILL.md`](SKILL.md) has the mechanism in detail.
 
 ---
 
