@@ -1,0 +1,8 @@
+flowchart TD
+    Q["What are you trying to achieve?"]
+    Q --> A["Name VIPs in scopes and policy,<br/>or enforce at the F5"]
+    Q --> B["See the real client<br/>hidden behind SNAT"]
+    A --> AO["External Orchestrator<br/>sections 4 to 7"]
+    B --> BC["F5 connector and IPFIX<br/>section 8"]
+    AO --> BOTH["Most mature deployments<br/>run both"]
+    BC --> BOTH

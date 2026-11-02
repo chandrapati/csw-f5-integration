@@ -26,6 +26,10 @@ If you've never touched either product, here's the mental model:
 
 **Which path do you need?**
 
+![Choosing between the External Orchestrator and the F5 connector](diagrams/01-which-path.svg)
+
+*Two independent paths. Pick by what you need; most mature deployments run both.*
+
 - Want **labels + policy enforcement at the F5**? → Do the **External Orchestrator** (§4–§7).
 - Want **flow visibility** of load-balanced traffic? → Do **IPFIX telemetry** (§8).
 - Most mature deployments do **both**.
@@ -70,19 +74,9 @@ This is also why a policy built on the SNAT address is dangerous rather than mer
 
 **The F5 connector fixes "who was the real client?"** The BIG-IP exports IPFIX records describing **both** halves. The connector correlates them — this is the **NAT stitching** — and annotates both, so the path from the real client through the VIP to the pool member can be followed instead of dead-ending at the SNAT address.
 
-```
-                     ┌──────────────── F5 BIG-IP ────────────────┐
- 192.0.2.50  ───────►│  198.51.100.10:443   →   SNAT 198.51.100.200  │───────►  203.0.113.21:8443
- orders-app          │       payments-vip                            │           payments-api
-                     └───────────────────┬───────────────────────┘
-                                         │ IPFIX, both halves
-                                         ▼
-                              F5 connector  →  NAT stitching
-                                         │
-                                         ▼
-                              Secure Workload: the client-to-backend
-                              path is now visible and nameable
-```
+![One request through the BIG-IP and how the real client is recovered](diagrams/02-worked-example.svg)
+
+*The BIG-IP re-sources the connection. The F5 connector correlates both halves so the client-to-backend path survives the SNAT.*
 
 ### Why they are separate, and which you need
 
@@ -157,7 +151,7 @@ Use these in **inventory search**, **scopes**, and **policies** — for example,
   - **Read-only** is enough for **label import only**.
   - **Read + write** is required if you enable **policy enforcement** (CSW writes security rules).
 - Know your **partitions** and **route domain** (default `0`) — these decide which virtual servers get imported.
-- For IPFIX (§8): the **AVR / IPFIX** capability and the ability to define an IPFIX log destination/publisher.
+- For IPFIX (§8): a module that can **export IPFIX** — normally **AFM** (Advanced Firewall Manager) — plus the ability to define an IPFIX **log destination** and **log publisher**. Confirm what is licensed on your platform (§8.2).
 
 ### Cisco Secure Workload side
 - CSW **4.x** (on-prem or SaaS). Orchestrators live under **Manage → External Orchestrators**.
@@ -268,6 +262,10 @@ Each virtual server appears as a **service inventory** item characterized by its
 
 **What success looks like:** the first query returns one item per virtual server in scope. Compare that count against the virtual-server list on the BIG-IP itself — if CSW shows fewer, the gap is almost always the route domain or the caveat below.
 
+![Verifying label import](diagrams/03-verify-import.svg)
+
+*A healthy orchestrator proves connectivity, not import. Check the inventory count as well.*
+
 > **Caveat:** Only a VIP given as a **single address** is supported — a VIP defined as a subnet is **not** imported.
 
 ---
@@ -288,6 +286,10 @@ Each virtual server appears as a **service inventory** item characterized by its
 - CSW translates logical policies whose **provider** matches a labeled F5 virtual server into **F5 security policy rules** and deploys them via the REST API.
 - Any existing security-policy assignment on that virtual server is **replaced** by a CSW-managed assignment. (Existing policies aren't deleted from the F5 policy list, but the *assignment* to the VIP is swapped.)
 - CSW **detects drift** — manual rule changes on the VIP are reverted. **Manage those rules in CSW only.**
+
+![The enforcement lifecycle](diagrams/04-enforcement.svg)
+
+*Enabling enforcement deploys nothing by itself. Note what happens when it is later turned off.*
 
 **Before you enable it, be able to answer these:**
 
@@ -330,20 +332,27 @@ This path gives CSW **visibility** into traffic passing through the BIG-IP — e
 
 **The shape of this is four objects chained together, and it trips people up because each one only points at the next.** Nothing is exported until the last link is attached to something that actually generates records:
 
-```
-Pool  →  IPFIX Log Destination  →  Log Publisher  →  attached to virtual servers
-(where)        (what format)        (the handle)        (what generates records)
-```
+![The BIG-IP logging chain](diagrams/05-logging-chain.svg)
+
+*Each object only points at the next. Nothing is exported until the last link is attached.*
 
 On the BIG-IP (names vary slightly by TMOS version):
 
 1. **Create a Pool** pointing at the CSW ingest collector IP:UDP port (the IPFIX destination). *This is **where** records go — the pool members are collectors, not application servers.*
 2. **Create an IPFIX Log Destination** (Protocol = IPFIX, Transport = UDP) that uses that pool. *This is **how** records are formatted, and what makes them IPFIX rather than generic syslog.*
 3. **Create a Log Publisher** that references the IPFIX log destination. *This is the **handle** other configuration refers to. A publisher on its own sends nothing.*
-4. Attach the publisher so BIG-IP exports flow records (via AFM/AVR logging profiles or an iRule, depending on your module set) for the virtual servers you care about. ***This is the step that starts the flow of data.*** Steps 1–3 can all be correct and produce nothing without it.
+4. **Attach the publisher to the virtual servers you care about.** Normally this is an **AFM network-firewall logging profile** that references the log publisher, applied to each virtual server. ***This is the step that starts the flow of data.*** Steps 1–3 can all be correct and produce nothing without it.
 5. Ensure firewall allows the F5 **self-IP → CSW ingest collector** on the chosen UDP port. *Note the source is the **self-IP**, not the management IP — a common firewall-rule mistake.*
 
-> **Which module exports the records depends on your BIG-IP licensing and module set** (AFM, AVR, or an iRule). Confirm what is available on your platform with your F5 team rather than assuming — the correct option differs between deployments and TMOS versions.
+**The AFM path, end to end.** This is the arrangement to expect, but **verify the exact object names and menu paths against your TMOS version** — they move between releases:
+
+![The AFM export path, end to end](diagrams/06-afm-chain.svg)
+
+*Expect this arrangement, but verify object names and menu paths against your TMOS version.*
+
+> **Confirm AFM is licensed on your platform before planning this.** AFM is the usual export path and it is consistent with the rest of the integration — policy enforcement (§7) also writes AFM security objects, so an estate doing both is already AFM-licensed. Where AFM is **not** available, **AVR** or an **iRule-based IPFIX generator** have both been used instead; treat those as alternatives to confirm with your F5 team rather than documented steps here.
+
+> **Not verified in this guide:** the exact logging-profile menu path and field names, and whether your TMOS version requires any additional AFM configuration to emit records for a given virtual server. Check with your F5 team or the F5 documentation for your release.
 
 ### 8.3 Verify flows
 In CSW, open **Investigate → Flows** (flow explorer) and filter for traffic to your VIPs. You should see the **stitched** client → VIP → pool-member relationship — the real client against the real backend, not a flow that stops at the SNAT address.

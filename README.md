@@ -93,6 +93,7 @@ Curated from the [CSW-User-Education](https://github.com/chandrapati/CSW-User-Ed
 | [`CSW-F5-Integration-Guide.md`](CSW-F5-Integration-Guide.md) | Full step-by-step guide (Markdown source) |
 | [`CSW-F5-Integration-Guide.html`](CSW-F5-Integration-Guide.html) | Styled HTML — open in browser (embedded YouTube player) |
 | [`csw-f5-architecture.png`](csw-f5-architecture.png) | Architecture diagram |
+| [`diagrams/`](diagrams) | The guide's six diagrams. `.mmd` files are the editable source; `.svg` files are what the guide references. Regenerate with [`diagrams/render.sh`](diagrams/render.sh) |
 | [`build.sh`](build.sh) | Regenerate HTML/PDF from Markdown (requires pandoc + Chrome) |
 | [`docs/CUSTOMER-HANDOFF.md`](docs/CUSTOMER-HANDOFF.md) | Checklist to hand to the customer's F5 / network team |
 

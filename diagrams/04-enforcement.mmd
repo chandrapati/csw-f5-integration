@@ -1,0 +1,8 @@
+flowchart TD
+    A["Enable Enforcement<br/>on the orchestrator"] --> B["Nothing is deployed yet"]
+    B --> C["Run Enforce in a workspace holding a policy<br/>whose provider is the F5 service"]
+    C --> D["CSW writes security rules<br/>to the virtual server"]
+    D --> E["The existing security-policy assignment<br/>on that VIP is replaced"]
+    D --> F["Manual rule changes on the VIP<br/>are reverted as drift"]
+    D --> G{"Later: disable enforcement<br/>or delete the orchestrator?"}
+    G -- Yes --> H["All CSW rules are removed and the<br/>VIP security policy is left empty"]

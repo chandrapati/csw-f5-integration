@@ -1,0 +1,7 @@
+flowchart TD
+    A{"Orchestrator status healthy?"}
+    A -- No --> B["Credentials, reachability,<br/>or certificate - see section 11"]
+    A -- Yes --> C{"Does inventory search return<br/>your virtual servers?"}
+    C -- "None" --> D["Check the route domain, and the<br/>single-address VIP caveat below"]
+    C -- "Fewer than expected" --> D
+    C -- "All of them" --> E["Label import is working.<br/>Go to section 6"]

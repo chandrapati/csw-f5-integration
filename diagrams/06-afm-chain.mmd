@@ -1,0 +1,12 @@
+flowchart TD
+    A["Pool of IPFIX collectors<br/>CSW ingest appliance IP and UDP port"]
+    B["IPFIX Log Destination<br/>Protocol IPFIX, Transport UDP"]
+    C["Log Publisher<br/>the named handle"]
+    D["Network-firewall logging profile<br/>AFM"]
+    E["Virtual server"]
+    F["Records start flowing"]
+    A -- "referenced by" --> B
+    B -- "referenced by" --> C
+    C -- "referenced by" --> D
+    D -- "applied to" --> E
+    E ==> F

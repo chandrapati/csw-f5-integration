@@ -1,0 +1,16 @@
+flowchart LR
+    C["orders-app<br/>192.0.2.50"]
+    subgraph BIG["F5 BIG-IP"]
+        direction LR
+        V["payments-vip<br/>198.51.100.10:443"]
+        S["SNAT source<br/>198.51.100.200"]
+        V --> S
+    end
+    P["payments-api<br/>203.0.113.21:8443"]
+    K["F5 connector<br/>NAT stitching"]
+    SW["Secure Workload<br/>client-to-backend path<br/>visible and nameable"]
+
+    C -- "client-side half" --> V
+    S -- "server-side half" --> P
+    BIG -. "IPFIX, both halves" .-> K
+    K --> SW

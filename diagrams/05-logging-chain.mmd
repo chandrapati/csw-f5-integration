@@ -1,0 +1,4 @@
+flowchart LR
+    A["Pool<br/><i>where records go</i>"] --> B["IPFIX Log Destination<br/><i>what format</i>"]
+    B --> C["Log Publisher<br/><i>the named handle</i>"]
+    C --> D["Attached to virtual servers<br/><i>what generates records</i>"]
