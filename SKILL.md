@@ -25,12 +25,38 @@ How CSW learns about F5 BIG-IP connections and populates flows. Based on the Sec
 
 They solve different problems and are configured independently.
 
-| Piece | Gives you | Transport |
-|---|---|---|
-| **F5 BIG-IP Connector** | **Flows** — load-balanced flow visibility | IPFIX, pushed by the BIG-IP |
-| **External Orchestrator for F5 BIG-IP** | **Inventory, labels, and policy push** | iControl REST API, pulled by CSW |
+| Piece | Gives you | Transport | Who initiates |
+|---|---|---|---|
+| **F5 BIG-IP Connector** | **Flows** — load-balanced flow visibility | IPFIX | **The BIG-IP pushes** |
+| **External Orchestrator for F5 BIG-IP** | **Inventory, labels, and policy push** | iControl REST API | **CSW pulls** |
 
 The connector gives you flows. The orchestrator gives you virtual-server inventory, labels, and enforcement.
+
+**The direction of travel is the thing to remember.** Flows arrive because the BIG-IP sends them. Inventory and enforcement happen because CSW reaches out.
+
+```mermaid
+flowchart LR
+    subgraph F5["F5 BIG-IP"]
+        VS["Virtual servers<br/>pools, SNAT"]
+    end
+
+    subgraph CSW["Cisco Secure Workload"]
+        CONN["F5 BIG-IP Connector<br/>IPFIX collector"]
+        ORCH["External Orchestrator<br/>type f5"]
+        FLOW["Flow analysis"]
+        INV["Inventory, labels, scopes"]
+    end
+
+    LDAP["LDAP<br/>optional"]
+
+    VS -- "IPFIX records<br/>BIG-IP pushes" --> CONN
+    CONN -- "stitched flows" --> FLOW
+    LDAP -. "annotate client IPs<br/>with user info" .-> CONN
+
+    ORCH -- "iControl REST<br/>CSW pulls snapshot" --> VS
+    ORCH --> INV
+    INV -- "policy rendered as virtual-server<br/>security rules, pushed over REST" --> VS
+```
 
 ---
 
@@ -39,14 +65,28 @@ The connector gives you flows. The orchestrator gives you virtual-server invento
 - The connector is **essentially an IPFIX collector**.
 - The BIG-IP ADC is configured to **export IPFIX records to the connector**. The BIG-IP **pushes**; the connector does **not** poll or scrape session tables.
 - The connector receives the flow records, **stitches the NATed flows**, and forwards them to Secure Workload for flow analysis.
-- **Why stitching matters:** a load balancer splits one logical connection into two —
+- **Why stitching matters:** a load balancer splits one logical connection into two — client to virtual server, and BIG-IP to pool member. Without correlation, CSW would see two unrelated flows and the real client would be invisible behind the SNAT address.
 
-```
-client  →  virtual server      (client side)
-BIG-IP  →  pool member         (server side)
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant F5 as F5 BIG-IP
+    participant P as Pool member
+    participant K as F5 Connector
+    participant SW as Secure Workload
+
+    C->>F5: 1. connection to virtual server
+    Note over C,F5: client-side flow
+    F5->>P: 2. connection to pool member
+    Note over F5,P: server-side flow<br/>source is now the SNAT address
+    F5-->>K: 3. IPFIX export of both halves
+    Note over K: 4. NAT stitching<br/>correlates the two halves
+    K->>SW: 5. one flow — real client to real backend
 ```
 
   The connector **correlates both halves**, so CSW sees the real client talking to the real backend rather than two unrelated flows.
+
+> **The correlation is only as good as the exported records.** Because stitching is driven by IPFIX rather than by reading a live table on the BIG-IP, the **IPFIX template and field configuration on the F5 side is a real prerequisite**, not a formality. Confirm it before promising visibility.
 
 - If an **LDAP configuration** is supplied to the connector, it can **annotate client IPs with user information** where user data is available.
 - **No software agent is required** on the hosts behind the BIG-IP for this visibility.
@@ -67,6 +107,15 @@ BIG-IP  →  pool member         (server side)
 - Generated **labels can be used to build Secure Workload scopes**.
 - **Policy enforcement:** CSW translates policies into **security rules assigned to the virtual server** and deploys them **via the BIG-IP REST API**.
 - **Connectivity:** the BIG-IP REST API endpoint must be **reachable from CSW**. For **SaaS (TaaS)**, or when the BIG-IP is not directly reachable, configure a **Secure Connector tunnel**.
+
+```mermaid
+flowchart TD
+    A{"Is the BIG-IP REST endpoint<br/>reachable from CSW?"}
+    A -- "Yes — typical on-premises" --> B["Direct connection"]
+    A -- "No, or CSW is SaaS" --> C["Secure Connector tunnel"]
+    B --> D["External Orchestrator connects<br/>first snapshot up to 60s<br/>incremental thereafter"]
+    C --> D
+```
 
 Imported label keys and the single-address-VIP constraint are in the [README](README.md#imported-labels--quick-reference).
 
